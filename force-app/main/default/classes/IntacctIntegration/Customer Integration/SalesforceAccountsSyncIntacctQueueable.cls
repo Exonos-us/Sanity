@@ -9,36 +9,37 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
 
     public void execute(QueueableContext context) {
         try {
-            processAccounts();
+            processNextAccount();
         } catch (Exception e) {
             System.debug('❌ Error in execute: ' + e.getMessage());
             IntacctSyncUtil.sendErrorNotification('❌ Error in SalesforceAccountsSyncIntacctQueueable: ' + e.getMessage());
         }
     }
 
-    private void processAccounts() {
+    private void processNextAccount() {
         if (accountIdsToProcess.isEmpty()) {
             System.debug('✅ No more accounts to process.');
             return;
         }
 
-        Id accountId = accountIdsToProcess.remove(0); // Get first record
+        Id accountId = accountIdsToProcess.remove(0);
 
         try {
-            // 🔹 Query account to ensure it's editable
             Account acc = [SELECT Id, Name, Intacct_Customer_ID__c, Phone, BillingStreet, BillingCity, BillingState, BillingPostalCode, BillingCountry 
                            FROM Account WHERE Id = :accountId LIMIT 1];
 
             if (String.isBlank(acc.Intacct_Customer_ID__c)) {
                 // 🔹 Insert new customer in Intacct
-                String customerId = insertCustomerInIntacct(acc);
+                String customerId = syncCustomerInIntacct(acc, true);
                 if (customerId != null) {
                     acc.Intacct_Customer_ID__c = customerId;
                     update acc;
-                    System.debug('✅ Updated Salesforce Account with Intacct Customer ID: ' + customerId);
+                    System.debug('✅ Inserted and updated Salesforce Account with Intacct Customer ID: ' + customerId);
                 }
             } else {
-                System.debug('Skipping update logic for now');
+                // 🔹 Update existing customer in Intacct
+                syncCustomerInIntacct(acc, false);
+                System.debug('✅ Updated existing customer in Intacct: ' + acc.Intacct_Customer_ID__c);
             }
 
         } catch (Exception e) {
@@ -46,15 +47,20 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
             IntacctSyncUtil.sendErrorNotification('❌ Error processing account ' + accountId + ': ' + e.getMessage());
         }
 
-        // 🔄 Enqueue next record if there are more to process
-        if (!accountIdsToProcess.isEmpty() && Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
-            System.enqueueJob(new SalesforceAccountsSyncIntacctQueueable(accountIdsToProcess));
+        // ✅ Validate limits before enqueuing the next record
+        if (!accountIdsToProcess.isEmpty()) {
+            if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
+                System.enqueueJob(new SalesforceAccountsSyncIntacctQueueable(accountIdsToProcess));
+            } else {
+                System.debug('⚠️ Queueable job or callout limit reached. Next job not enqueued.');
+                IntacctSyncUtil.sendErrorNotification('⚠️ Queueable job or callout limit reached. Unable to enqueue next job.');
+            }
         }
     }
 
-    // 🔹 Inserts a new customer into Intacct
-    private String insertCustomerInIntacct(Account acc) {
-        String requestBody = buildInsertRequest(acc);
+    // 🔹 Inserts or Updates a customer in Intacct
+    private String syncCustomerInIntacct(Account acc, Boolean isInsert) {
+        String requestBody = buildRequest(acc, isInsert);
 
         try {
             HttpRequest req = new HttpRequest();
@@ -67,10 +73,10 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
             HttpResponse res = http.send(req);
 
             if (res.getStatusCode() == 200) {
-                return parseInsertResponse(res.getBody());
+                return parseResponse(res.getBody(), isInsert);
             } else {
-                System.debug('❌ Insert failed: ' + res.getBody());
-                IntacctSyncUtil.sendErrorNotification('❌ Insert failed for Account ' + acc.Name + ': ' + res.getBody());
+                System.debug('❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed: ' + res.getBody());
+                IntacctSyncUtil.sendErrorNotification('❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed for Account ' + acc.Name + ': ' + res.getBody());
             }
         } catch (Exception e) {
             System.debug('❌ Callout error: ' + e.getMessage());
@@ -80,8 +86,8 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
         return null;
     }
 
-    // 🔹 Parses the response from Intacct and retrieves CUSTOMERID
-    private String parseInsertResponse(String xmlResponse) {
+    // 🔹 Parses the response from Intacct
+    private String parseResponse(String xmlResponse, Boolean isInsert) {
         try {
             Dom.Document doc = new Dom.Document();
             doc.load(xmlResponse);
@@ -94,7 +100,8 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
             if (dataNode != null) {
                 Dom.XmlNode customerNode = dataNode.getChildElement('customer', null);
                 if (customerNode != null) {
-                    return customerNode.getChildElement('CUSTOMERID', null).getText();
+                    String customerId = customerNode.getChildElement('CUSTOMERID', null).getText();
+                    return customerId;
                 }
             }
         } catch (Exception e) {
@@ -105,8 +112,11 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
         return null;
     }
 
-    // 🔹 Builds XML Request for Inserting a Customer
-    private String buildInsertRequest(Account acc) {
+    // 🔹 Builds XML Request for Insert or Update
+    private String buildRequest(Account acc, Boolean isInsert) {
+        String operationType = isInsert ? 'create' : 'update';
+        String controlId = isInsert ? 'createCustomer' : 'updateCustomer';
+
         return '<?xml version="1.0" encoding="UTF-8"?>' +
             '<request>' +
             '  <control>' +
@@ -122,9 +132,10 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
             '      <sessionid>' + IntacctSyncUtil.getSessionId() + '</sessionid>' +
             '    </authentication>' +
             '    <content>' +
-            '      <function controlid="createCustomer">' +
-            '        <create>' +
+            '      <function controlid="' + controlId + '">' +
+            '        <' + operationType + '>' +
             '          <CUSTOMER>' +
+            (isInsert ? '' : '            <CUSTOMERID>' + acc.Intacct_Customer_ID__c + '</CUSTOMERID>') +
             '            <NAME>' + acc.Name + '</NAME>' +
             '            <STATUS>active</STATUS>' +
             '            <DISPLAYCONTACT>' +
@@ -140,7 +151,7 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
             '            <TAXABLE>true</TAXABLE>' +
             '            <CURRENCY>USD</CURRENCY>' +
             '          </CUSTOMER>' +
-            '        </create>' +
+            '        </' + operationType + '>' +
             '      </function>' +
             '    </content>' +
             '  </operation>' +

@@ -4,7 +4,7 @@ trigger SyncAccountToIntacctTrigger on Account (after insert, after update) {
     // Fields to monitor for updates
     Set<String> fieldsToCheck = new Set<String>{
         'Name', 'Phone', 'BillingStreet', 'BillingCity', 'BillingPostalCode',
-        'BillingState', 'BillingCountry', 'Account_Status__c', 'Description'
+        'BillingState', 'BillingCountry', 'Account_Status__c', 'Description','Intacct_Customer_ID__c'
     };
 
     for (Account acc : Trigger.new) {
@@ -29,8 +29,13 @@ trigger SyncAccountToIntacctTrigger on Account (after insert, after update) {
         }
     }
 
-    // 🔹 Enqueue queueable job for upsert operation (Insert or Update in Intacct)
-    if (!accountIdsToProcess.isEmpty() && Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
-        System.enqueueJob(new SalesforceAccountsSyncIntacctQueueable(accountIdsToProcess));
+    // ✅ Validate limits before enqueuing
+    if (!accountIdsToProcess.isEmpty()) {
+        if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
+            System.enqueueJob(new SalesforceAccountsSyncIntacctQueueable(accountIdsToProcess));
+        } else {
+            System.debug('⚠️ Queueable job or callout limit reached. Job not enqueued.');
+            IntacctSyncUtil.sendErrorNotification('⚠️ Queueable job or callout limit reached. Unable to enqueue job.');
+        }
     }
 }
