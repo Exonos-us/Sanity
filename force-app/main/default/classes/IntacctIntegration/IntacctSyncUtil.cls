@@ -1,29 +1,47 @@
 public class IntacctSyncUtil {
+    
+    /**
+     * 🔹 Retrieves Intacct API credentials from Custom Metadata
+     * @return Map<String, String> containing credentials
+     */
+    public static Map<String, String> getIntacctCredentials() {
+        IntacctSettings__mdt settings = [
+            SELECT Sender_ID__c, Sender_Password__c, User_Password__c, 
+                   Company_ID__c, User_ID__c, API_Endpoint__c
+            FROM IntacctSettings__mdt
+            LIMIT 1
+        ];
 
-    // 🔹 Load credentials from Custom Metadata or Custom Settings
-    private static final String SENDER_ID = 'Sanity1720';  // TODO: Store in Custom Metadata
-    private static final String SENDER_PASSWORD = 'Cloudstreet2025!';  // TODO: Store securely
-    private static final String USER_PASSWORD = 'v4ZRi%s63pp';  // TODO: Store securely
-    private static final String COMPANY_ID = 'Sanity1720';  // TODO: Store in Custom Metadata
-    private static final String USER_ID = 'workato_isu';  // TODO: Store in Custom Metadata
-    private static final String API_ENDPOINT = 'https://api.intacct.com/ia/xml/xmlgw.phtml';
+        if (settings == null) {
+            System.debug('❌ Error: Intacct Settings metadata not found.');
+            sendErrorNotification('❌ Intacct Settings metadata is missing.');
+            return null;
+        }
+
+        return new Map<String, String>{
+            'Sender_ID' => settings.Sender_ID__c,
+            'Sender_Password' => settings.Sender_Password__c,
+            'User_Password' => settings.User_Password__c,
+            'Company_ID' => settings.Company_ID__c,
+            'User_ID' => settings.User_ID__c,
+            'API_Endpoint' => settings.API_Endpoint__c
+        };
+    }
 
     /**
      * 🔹 Retrieves the session ID for Intacct API authentication.
      * @return Session ID string or null if authentication fails.
      */
     public static String getSessionId() {
+        Map<String, String> credentials = getIntacctCredentials();
+        if (credentials == null) return null;
+
         try {
-            HttpRequest req = new HttpRequest();
-            req.setEndpoint(API_ENDPOINT);
-            req.setMethod('POST');
-            req.setHeader('Content-Type', 'application/xml');
-    
-            String body = '<?xml version="1.0" encoding="UTF-8"?>' +
+            String requestBody = '<?xml version="1.0" encoding="UTF-8"?>' +
                         '<request>' +
                         '  <control>' +
-                        '    <senderid>' + SENDER_ID + '</senderid>' +
-                        '    <password>' + SENDER_PASSWORD + '</password>' +
+                        '    <senderid>' + credentials.get('Sender_ID') + '</senderid>' +
+                        '    <password>' + credentials.get('Sender_Password') + '</password>' +
                         '    <controlid>session_request</controlid>' +
                         '    <uniqueid>false</uniqueid>' +
                         '    <dtdversion>3.0</dtdversion>' +
@@ -32,9 +50,9 @@ public class IntacctSyncUtil {
                         '  <operation>' +
                         '    <authentication>' +
                         '      <login>' +
-                        '        <userid>' + USER_ID + '</userid>' +
-                        '        <companyid>' + COMPANY_ID + '</companyid>' +
-                        '        <password>' + USER_PASSWORD + '</password>' +
+                        '        <userid>' + credentials.get('User_ID') + '</userid>' +
+                        '        <companyid>' + credentials.get('Company_ID') + '</companyid>' +
+                        '        <password>' + credentials.get('User_Password') + '</password>' +
                         '      </login>' +
                         '    </authentication>' +
                         '    <content>' +
@@ -45,11 +63,15 @@ public class IntacctSyncUtil {
                         '  </operation>' +
                         '</request>';
 
-    
-            req.setBody(body);
+            HttpRequest req = new HttpRequest();
+            req.setEndpoint(credentials.get('API_Endpoint'));
+            req.setMethod('POST');
+            req.setHeader('Content-Type', 'application/xml');
+            req.setBody(requestBody);
+
             Http http = new Http();
             HttpResponse res = http.send(req);
-    
+
             System.debug('🔹 Intacct API Response Code: ' + res.getStatusCode());
             System.debug('🔹 Intacct API Response Body: ' + res.getBody());
 
@@ -58,57 +80,54 @@ public class IntacctSyncUtil {
                 doc.load(res.getBody());
                 Dom.XmlNode root = doc.getRootElement();
 
-                Dom.XmlNode operationNode = root.getChildElement('operation', null);
-                if (operationNode == null) {
-                    return null;
-                }
-
-                Dom.XmlNode authenticationNode = operationNode.getChildElement('authentication', null);
-                if (authenticationNode == null) {
-                    return null;
-                }
-
-                Dom.XmlNode authStatusNode = authenticationNode.getChildElement('status', null);
-                if (authStatusNode == null || authStatusNode.getText() != 'success') {
-                    System.debug('❌ Error: Authentication failed in Intacct API.');
-                    sendErrorNotification('Authentication failed in Intacct API. Status: ' + (authStatusNode != null ? authStatusNode.getText() : 'N/A'));
-                    return null;
-                }
-
                 Dom.XmlNode sessionIdNode = root.getChildElement('operation', null)
-                ?.getChildElement('result', null)
-                ?.getChildElement('data', null)
-                ?.getChildElement('api', null)
-                ?.getChildElement('sessionid', null);
+                    ?.getChildElement('result', null)
+                    ?.getChildElement('data', null)
+                    ?.getChildElement('api', null)
+                    ?.getChildElement('sessionid', null);
+                
                 if (sessionIdNode == null) {
-                    sendErrorNotification('Session ID not found in response.');
+                    sendErrorNotification('❌ Session ID not found in response.');
                     return null;
                 }
 
                 String sessionId = sessionIdNode.getText();
                 System.debug('✅ Session ID Retrieved: ' + sessionId);
                 return sessionId;
-
-
             }
         } catch (Exception e) {
             System.debug('❌ Authentication Error: ' + e.getMessage());
-            sendErrorNotification('Authentication Failed: ' + e.getMessage());
+            sendErrorNotification('❌ Authentication Failed: ' + e.getMessage());
         }
         return null;
     }
 
     /**
-     * 🔹 Sends an email notification in case of errors.
+     * 🔹 Sends an email notification in case of errors to all users in the 'IntacctSyncAdmins' public group.
      * @param message The error message to be sent.
      */
     public static void sendErrorNotification(String message) {
+        List<String> recipientEmails = new List<String>();
+
+        // Retrieve users in the 'IntacctSyncAdmins' Public Group
+        for (GroupMember gm : [SELECT UserOrGroupId FROM GroupMember WHERE Group.Name = 'IntacctSyncAdmins']) {
+            List<User> users = [SELECT Email FROM User WHERE Id = :gm.UserOrGroupId AND Email != null];
+            for (User user : users) {
+                recipientEmails.add(user.Email);
+            }
+        }
+
+        if (recipientEmails.isEmpty()) {
+            System.debug('⚠️ No recipients found in IntacctSyncAdmins Public Group.');
+            return;
+        }
+
         Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
-        email.setToAddresses(new List<String>{'admin@example.com'});  // TODO: Replace with actual email
+        email.setToAddresses(recipientEmails);
         email.setSubject('🚨 Intacct Sync Error');
         email.setPlainTextBody('An error occurred: ' + message);
-        Messaging.sendEmail(new List<Messaging.Email> {email});
-    }
+        Messaging.sendEmail(new List<Messaging.Email> { email });
 
-    
+        System.debug('📩 Sent error notification to: ' + recipientEmails);
+    }
 }
