@@ -37,7 +37,7 @@ trigger SyncProductToIntacctTrigger on Product2 (after insert, after update) {
         if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
 
             // Enqueue the job to process the Product2 records for synchronization
-            //System.enqueueJob(new SalesforceProductSyncIntacctQueueable(productIdsToProcess));
+            System.enqueueJob(new SalesforceProductSyncIntacctQueueable(productIdsToProcess));
 
         } else {
             System.debug('⚠️ Queueable job or callout limit reached. Sync job not enqueued.');
