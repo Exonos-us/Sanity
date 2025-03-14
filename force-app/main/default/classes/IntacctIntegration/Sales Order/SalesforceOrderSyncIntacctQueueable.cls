@@ -30,7 +30,7 @@ public class SalesforceOrderSyncIntacctQueueable implements Queueable, Database.
             Order ord = [
                 SELECT Id, OrderNumber, EffectiveDate, Status, Account.Name, Account.Intacct_Customer_Id__c,Account.Intacct_Customer_Name__c, Description,
                        Intacct_Sync_Status__c, Intacct_Sync_Error_Message__c, Intacct_Sales_Order_ID__c,
-                       SBQQ__Quote__r.SBQQ__PrimaryContact__r.Name
+                       SBQQ__Quote__r.SBQQ__SalesRep__r.Name
                 FROM Order
                 WHERE Id = :orderId
                 LIMIT 1
@@ -173,8 +173,8 @@ public class SalesforceOrderSyncIntacctQueueable implements Queueable, Database.
         String controlId = 'createSalesOrderHeader' + String.valueOf(System.currentTimeMillis());
         String accountIntacctId = ord.Account.Intacct_Customer_Id__c;
         System.debug('accountIntacctId: ' + accountIntacctId);
-        String primaryContact = ord.SBQQ__Quote__r != null && ord.SBQQ__Quote__r.SBQQ__PrimaryContact__r != null
-            ? safeString(ord.SBQQ__Quote__r.SBQQ__PrimaryContact__r.Name)
+        String primaryContact = ord.SBQQ__Quote__r != null && ord.SBQQ__Quote__r.SBQQ__SalesRep__c != null
+            ? safeString(ord.SBQQ__Quote__r.SBQQ__SalesRep__r.Name)
             : '';
     
         String contactName = ord.Account.Intacct_Customer_Name__c;

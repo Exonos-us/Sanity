@@ -91,6 +91,7 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
                '            <field>NAME</field>' +
                '            <field>STATUS</field>' +
                '            <field>CUSTTYPE</field>' +
+               '            <field>DISPLAYCONTACT.CONTACTNAME</field>'+
                '            <field>DISPLAYCONTACT.PHONE1</field>' +
                '            <field>DISPLAYCONTACT.CELLPHONE</field>' +
                '            <field>DISPLAYCONTACT.MAILADDRESS.ADDRESS1</field>' +
@@ -145,6 +146,7 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
                     acc.Name = name;
                     acc.Account_Status__c = customerNode.getChildElement('STATUS', null)?.getText();
                     acc.Type = customerNode.getChildElement('CUSTTYPE', null)?.getText();
+                    acc.Intacct_Customer_Name__c = customerNode.getChildElement('DISPLAYCONTACT.CONTACTNAME', null)?.getText();
                     acc.Phone = customerNode.getChildElement('DISPLAYCONTACT.PHONE1', null)?.getText();
                     acc.BillingStreet = customerNode.getChildElement('DISPLAYCONTACT.MAILADDRESS.ADDRESS1', null)?.getText();
                     acc.BillingCity = customerNode.getChildElement('DISPLAYCONTACT.MAILADDRESS.CITY', null)?.getText();
