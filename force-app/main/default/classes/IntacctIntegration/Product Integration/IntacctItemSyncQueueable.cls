@@ -1,6 +1,6 @@
 public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallouts {
 
-    private static final Integer PAGE_SIZE = 10;
+    private static final Integer PAGE_SIZE = 100;
 
     private Integer offset;
     private String lastModifiedDate;
@@ -179,7 +179,7 @@ public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallo
             if (numRemaining > 0) {
                 if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
                     if (!Test.isRunningTest()) {
-                        //System.enqueueJob(new IntacctItemSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
+                        System.enqueueJob(new IntacctItemSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
                     }
                 } else {
                     IntacctSyncUtil.sendErrorNotification(
