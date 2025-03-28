@@ -3,13 +3,17 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
     private static final Integer PAGE_SIZE = 10;
 
     private Integer offset;
+    private String lastModifiedDate;
+
 
     public IntacctInvoiceSyncQueueable() {
         this.offset = 0;
+        this.lastModifiedDate = '01/01/2024 00:00:00';
     }
 
-    public IntacctInvoiceSyncQueueable(Integer offset) {
+    public IntacctInvoiceSyncQueueable(Integer offset,String lastModifiedDate) {
         this.offset = offset;
+        this.lastModifiedDate = lastModifiedDate;
     }
 
     public void execute(QueueableContext context) {
@@ -189,7 +193,7 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
 
             if (numRemaining > 0) {
                 if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
-                    //System.enqueueJob(new IntacctInvoiceSyncQueueable(offset + PAGE_SIZE));
+                    System.enqueueJob(new IntacctInvoiceSyncQueueable(offset + PAGE_SIZE,lastModifiedDate));
                 } else {
                     IntacctSyncUtil.sendErrorNotification('⚠️ Limits reached - Unable to enqueue next invoice job.');
                 }
