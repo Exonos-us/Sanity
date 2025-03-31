@@ -4,6 +4,7 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
 
     private Integer offset;
     private String lastModifiedDate;
+    private String sessionId;
 
 
     public IntacctInvoiceSyncQueueable() {
@@ -15,6 +16,7 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
         this.offset = offset;
         this.lastModifiedDate = lastModifiedDate;
     }
+
 
     public void execute(QueueableContext context) {
         requestInvoices();
@@ -29,13 +31,13 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
         }
 
         try {
-            String sessionId = IntacctSyncUtil.getSessionId();
-            if (sessionId == null) {
+            this.sessionId = IntacctSyncUtil.getSessionId();
+            if (this.sessionId == null) {
                 IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct session token.');
                 return;
             }
 
-            String requestBody = buildInvoiceQueryRequest(sessionId, offset, credentials);
+            String requestBody = buildInvoiceQueryRequest(this.sessionId, offset, credentials);
 
             HttpRequest req = new HttpRequest();
             req.setEndpoint(credentials.get('API_Endpoint'));
@@ -108,46 +110,46 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
     }
 
     private void processInvoiceResponse(String responseBody) {
-        List<String> errorMessages = new List<String>();
-
+        List<String> errorMessages = new List<String>();    
         try {
             Dom.Document doc = new Dom.Document();
             doc.load(responseBody);
             Dom.XmlNode root = doc.getRootElement();
-
+    
             Dom.XmlNode resultNode = root.getChildElement('operation', null)
                                          ?.getChildElement('result', null);
             if (resultNode == null) {
                 errorMessages.add('❌ No result node found in response.');
                 return;
             }
-
+    
             Dom.XmlNode dataNode = resultNode.getChildElement('data', null);
             if (dataNode == null) {
                 return;
             }
-
+    
             // 🔸 Query Accounts for mapping CustomerID -> Account.Id
             Map<String, Account> relatedAccountsMap = new Map<String, Account>();
             for (Account acc : [SELECT Id, Intacct_Customer_ID__c FROM Account WHERE Intacct_Customer_ID__c != null]) {
                 relatedAccountsMap.put(acc.Intacct_Customer_ID__c, acc);
             }
-
+    
             List<Intacct_Invoice__c> invoicesToUpsert = new List<Intacct_Invoice__c>();
-
+    
             for (Dom.XmlNode invoiceNode : dataNode.getChildElements()) {
                 try {
-                    String intacctInvoiceId = invoiceNode.getChildElement('RECORDNO', null)?.getText();
-
+                    String intacctInvoiceId = invoiceNode.getChildElement('RECORDID', null)?.getText();
+                    String intacctInvoiceKey = invoiceNode.getChildElement('RECORDNO', null)?.getText();
+    
                     if (String.isBlank(intacctInvoiceId)) {
                         errorMessages.add('⚠️ Skipping invoice due to missing RECORDNO.');
                         continue;
                     }
-
+    
                     Intacct_Invoice__c invoice = new Intacct_Invoice__c();
-
                     invoice.Intacct_Invoice_ID__c = intacctInvoiceId;
-                    invoice.Name = invoiceNode.getChildElement('RECORDID', null)?.getText();
+                    invoice.Intacct_Invoice_Key__c = intacctInvoiceKey;
+                    invoice.Name = intacctInvoiceId;
                     invoice.Invoce_State__c = invoiceNode.getChildElement('STATE', null)?.getText();
                     invoice.Invoice_Description__c = invoiceNode.getChildElement('DESCRIPTION', null)?.getText();
                     invoice.Terms__c = invoiceNode.getChildElement('TERMNAME', null)?.getText();
@@ -157,7 +159,7 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
                     invoice.Total_Entered__c = invoiceNode.getChildElement('TOTALENTERED', null)?.getText();
                     invoice.Total_Paid__c = invoiceNode.getChildElement('TOTALPAID', null)?.getText();
                     invoice.Total_Due__c = invoiceNode.getChildElement('TOTALDUE', null)?.getText();
-
+    
                     String customerId = invoiceNode.getChildElement('CUSTOMERID', null)?.getText();
                     if (!String.isBlank(customerId)) {
                         Account relatedAccount = relatedAccountsMap.get(customerId);
@@ -167,17 +169,17 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
                             errorMessages.add('⚠️ No matching Account found for CustomerID: ' + customerId);
                         }
                     }
-
+    
                     invoicesToUpsert.add(invoice);
-
                 } catch (Exception e) {
                     errorMessages.add('❌ Error processing invoice record: ' + e.getMessage());
                 }
             }
-
+    
+            // Upsert the invoices
             if (!invoicesToUpsert.isEmpty()) {
                 Database.UpsertResult[] results = Database.upsert(invoicesToUpsert, Intacct_Invoice__c.Intacct_Invoice_ID__c, false);
-
+    
                 for (Integer i = 0; i < results.size(); i++) {
                     if (results[i].isSuccess()) {
                         System.debug('✅ Upserted invoice: ' + invoicesToUpsert[i].Name);
@@ -188,25 +190,26 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
                     }
                 }
             }
-
+    
+            // Handle pagination
             Integer numRemaining = Integer.valueOf(dataNode.getAttributeValue('numremaining', null));
-
             if (numRemaining > 0) {
                 if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
-                    System.enqueueJob(new IntacctInvoiceSyncQueueable(offset + PAGE_SIZE,lastModifiedDate));
+                    //System.enqueueJob(new IntacctInvoiceSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
                 } else {
                     IntacctSyncUtil.sendErrorNotification('⚠️ Limits reached - Unable to enqueue next invoice job.');
                 }
             }
-
+    
         } catch (Exception e) {
             errorMessages.add('❌ Critical error processing invoice response: ' + e.getMessage());
         }
-
+    
         if (!errorMessages.isEmpty()) {
             IntacctSyncUtil.sendErrorNotification(String.join(errorMessages, '\n'));
         }
     }
+
 
     private Date parseDate(String dateStr) {
         if (String.isBlank(dateStr)) return null;
