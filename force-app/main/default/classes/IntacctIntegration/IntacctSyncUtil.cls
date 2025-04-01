@@ -130,4 +130,21 @@ public class IntacctSyncUtil {
 
         System.debug('📩 Sent error notification to: ' + recipientEmails);
     }
+
+
+    public static void logSyncError(String module, String message) {
+        try {
+            Intacct_Error_Log__c errorLog = new Intacct_Error_Log__c();
+            errorLog.Module__c = module;    
+            if (!String.isBlank(message)) {
+                errorLog.Message__c = message.length() > 32000 ? message.substring(0, 32000) : message;
+            }
+    
+            insert errorLog;
+            System.debug('📝 Error log inserted: ' + message);
+        } catch (Exception e) {
+            System.debug('❌ Failed to log error: ' + e.getMessage());
+        }
+    }
+    
 }

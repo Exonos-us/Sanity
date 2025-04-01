@@ -9,7 +9,7 @@ public with sharing class IntacctInvoiceItemSyncBatch implements Database.Batcha
     public Database.QueryLocator start(Database.BatchableContext context) {
         
         return Database.getQueryLocator([
-                SELECT Id, Intacct_Invoice_ID__c, LastModifiedDate FROM Intacct_Invoice__c
+                SELECT Id, Intacct_Invoice_ID__c,Intacct_Invoice_Key__c, LastModifiedDate FROM Intacct_Invoice__c
             ]);
         
     }
