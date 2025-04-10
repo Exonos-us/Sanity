@@ -224,13 +224,4 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
         return null;
     }
 
-    private Decimal parseDecimal(String decimalStr) {
-        if (String.isBlank(decimalStr)) return null;
-        try {
-            return Decimal.valueOf(decimalStr);
-        } catch (Exception e) {
-            System.debug('⚠️ Decimal parse error: ' + decimalStr);
-        }
-        return null;
-    }
 }
