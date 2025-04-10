@@ -1,6 +1,6 @@
 public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCallouts {
 
-    private static final Integer PAGE_SIZE = 10;
+    private static final Integer PAGE_SIZE = 100;
 
     private Integer offset;
     private String lastModifiedDate;
