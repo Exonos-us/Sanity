@@ -1,70 +1,27 @@
 @isTest
-private class IntacctCustomerSyncQueueableTest {
+private class IntacctCustomerSyncSchedulerTest {
 
     @isTest
-    static void testQueueableExecution_WithCustomParameters() {
-        // First mock: Session response
+    static void testScheduledExecution_EnqueuesQueueable() {
+        // Set required mocks
         Test.setMock(HttpCalloutMock.class, new MockIntacctSessionCallout());
-
-        // Second mock: Customer data response
         Test.setMock(HttpCalloutMock.class, new MockIntacctCustomerCallout());
 
+        // Create the instance of the scheduler
+        IntacctCustomerSyncScheduler scheduler = new IntacctCustomerSyncScheduler();
+
         Test.startTest();
-        System.enqueueJob(new IntacctCustomerSyncQueueable(0, '01/01/2024 00:00:00'));
+        // Simulate the scheduled execution
+        scheduler.execute(null);
         Test.stopTest();
 
+        // Assert the Account was inserted from the queueable run
         List<Account> accounts = [SELECT Id, Name FROM Account];
         System.assertEquals(1, accounts.size());
         System.assertEquals('Test Customer', accounts[0].Name);
     }
 
-    @isTest
-    static void testQueueableExecution_UsingDefaultConstructor() {
-        Test.setMock(HttpCalloutMock.class, new MockIntacctSessionCallout());
-        Test.setMock(HttpCalloutMock.class, new MockIntacctCustomerCallout());
-
-        Test.startTest();
-        System.enqueueJob(new IntacctCustomerSyncQueueable());
-        Test.stopTest();
-
-        List<Account> accounts = [SELECT Id FROM Account];
-        System.assertEquals(1, accounts.size());
-    }
-
-    @isTest
-    static void testQueueableExecution_NoCustomersInResponse() {
-        Test.setMock(HttpCalloutMock.class, new MockIntacctSessionCallout());
-        Test.setMock(HttpCalloutMock.class, new MockEmptyCustomerResponse());
-
-        Test.startTest();
-        System.enqueueJob(new IntacctCustomerSyncQueueable());
-        Test.stopTest();
-
-        List<Account> accounts = [SELECT Id FROM Account];
-        System.assertEquals(0, accounts.size());
-    }
-
-    @isTest
-    static void testExecution_HandlesUnexpectedException() {
-    
-        Test.startTest();
-        System.enqueueJob(new IntacctCustomerSyncQueueable());
-        Test.stopTest();
-
-    }
-
-    @isTest
-    static void testExecution_WithFailedCustomerQueryStatusCode() {
-        Test.setMock(HttpCalloutMock.class, new MockIntacctSessionCallout());
-        Test.setMock(HttpCalloutMock.class, new MockErrorCustomerCallout());
-
-        Test.startTest();
-        System.enqueueJob(new IntacctCustomerSyncQueueable());
-        Test.stopTest();
-
-        System.assertEquals(0, [SELECT COUNT() FROM Account]);
-    }
-
+    // ---- Required mocks ----
 
     private class MockIntacctSessionCallout implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest req) {
@@ -89,7 +46,7 @@ private class IntacctCustomerSyncQueueableTest {
                         '  <operation>' +
                         '    <result>' +
                         '      <status>success</status>' +
-                        '      <data numremaining="10">' +
+                        '      <data numremaining="0">' +
                         '        <customer>' +
                         '          <CUSTOMERID>CUST123</CUSTOMERID>' +
                         '          <NAME>Test Customer</NAME>' +
@@ -107,28 +64,6 @@ private class IntacctCustomerSyncQueueableTest {
                         '    </result>' +
                         '  </operation>' +
                         '</response>');
-            return res;
-        }
-    }
-
-    private class MockErrorCustomerCallout implements HttpCalloutMock {
-        public HttpResponse respond(HttpRequest req) {
-            HttpResponse res = new HttpResponse();
-            res.setStatusCode(500); // Simulate HTTP error
-            res.setBody('Internal Server Error');
-            return res;
-        }
-    }
-
-
-    private class MockEmptyCustomerResponse implements HttpCalloutMock {
-        public HttpResponse respond(HttpRequest req) {
-            HttpResponse res = new HttpResponse();
-            res.setStatusCode(200);
-            res.setHeader('Content-Type', 'application/xml');
-            res.setBody('<?xml version="1.0" encoding="UTF-8"?>' +
-                        '<response><operation><result><status>success</status>' +
-                        '<data numremaining="0"></data></result></operation></response>');
             return res;
         }
     }
