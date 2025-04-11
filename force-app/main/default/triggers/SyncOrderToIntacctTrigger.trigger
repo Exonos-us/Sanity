@@ -11,7 +11,7 @@ trigger SyncOrderToIntacctTrigger on Order (after insert) {
         if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
 
             // Enqueue the job to process the Order records for synchronization
-            //System.enqueueJob(new SalesforceOrderSyncIntacctQueueable(orderIdsToProcess));
+            System.enqueueJob(new SalesforceOrderSyncIntacctQueueable(orderIdsToProcess));
 
         } else {
             System.debug('⚠️ Queueable job or callout limit reached. Sync job not enqueued.');
