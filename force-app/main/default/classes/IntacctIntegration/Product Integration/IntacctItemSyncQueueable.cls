@@ -23,14 +23,13 @@ public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallo
         Map<String, String> credentials = IntacctSyncUtil.getIntacctCredentials();
 
         if (credentials == null) {
-            IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct API credentials.');
-            return;
+            IntacctSyncUtil.logSyncError( 'Item Sync', '❌ Failed to retrieve Intacct API credentials.', 'requestItems', 'IntacctItemSyncQueueable' );            return;
         }
 
         try {
             String sessionId = IntacctSyncUtil.getSessionId();
             if (sessionId == null) {
-                IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct session token.');
+                IntacctSyncUtil.logSyncError( 'Item Sync', '❌ Failed to retrieve Intacct session token.', 'requestItems', 'IntacctItemSyncQueueable' );
                 return;
             }
 
@@ -49,14 +48,14 @@ public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallo
             System.debug('🔹 Intacct Item Query Response Body: ' + res.getBody());
 
             if (res.getStatusCode() != 200) {
-                IntacctSyncUtil.sendErrorNotification('❌ Intacct Item Query failed. HTTP Code: ' + res.getStatusCode());
+                IntacctSyncUtil.logSyncError( 'Item Sync', '❌ Intacct Item Query failed. HTTP Code: ' + res.getStatusCode(), 'requestItems', 'IntacctItemSyncQueueable' );
                 return;
             }
 
             processItemResponse(res.getBody());
 
         } catch (Exception e) {
-            IntacctSyncUtil.sendErrorNotification('❌ Error in IntacctItemSyncQueueable: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError( 'Item Sync', '❌ Error in IntacctItemSyncQueueable: ' + e.getMessage(), 'requestItems', 'IntacctItemSyncQueueable' );
         }
     }
 
@@ -151,7 +150,7 @@ public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallo
                     productsToUpsert.add(prod);
 
                 } catch (Exception e) {
-                    errorMessages.add('❌ Error processing item record: ' + e.getMessage() + ' StackTrace: ' + e.getStackTraceString());
+                    IntacctSyncUtil.logSyncError( 'Item Sync', '❌ No result node found in response.', 'processItemResponse', 'IntacctItemSyncQueueable' );
                 }
             }
 
@@ -164,7 +163,9 @@ public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallo
                         System.debug('✅ Successfully upserted: ' + productsToUpsert[i].Name + ' ITEMID: ' + productsToUpsert[i].Intacct_Item_ID__c);
                     } else {
                         for (Database.Error err : results[i].getErrors()) {
+                            String msg = '❌ Upsert error on Product [' + productsToUpsert[i].Name + ']: ' + err.getMessage();
                             errorMessages.add('❌ Upsert error on Product [' + productsToUpsert[i].Name + ']: ' + err.getMessage());
+                            IntacctSyncUtil.logSyncError( 'Item Sync', msg, 'processItemResponse', 'IntacctItemSyncQueueable' );
                         }
                     }
                 }
@@ -182,6 +183,7 @@ public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallo
                         System.enqueueJob(new IntacctItemSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
                     }
                 } else {
+                    IntacctSyncUtil.logSyncError( 'Item Sync', '⚠️ Limits reached - Unable to enqueue next item job. Queueable jobs: ' + Limits.getQueueableJobs() + ' / ' + Limits.getLimitQueueableJobs() + ', Callouts: ' + Limits.getCallouts() + ' / ' + Limits.getLimitCallouts() + '. Remaining records: ' + numRemaining, 'processItemResponse', 'IntacctItemSyncQueueable' );
                     IntacctSyncUtil.sendErrorNotification(
                         '⚠️ Limits reached - Unable to enqueue next item job. ' +
                         'Queueable jobs: ' + Limits.getQueueableJobs() + ' / ' + Limits.getLimitQueueableJobs() +
@@ -194,7 +196,7 @@ public class IntacctItemSyncQueueable implements Queueable, Database.AllowsCallo
             }
 
         } catch (Exception e) {
-            errorMessages.add('❌ Critical error processing item response: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError( 'Item Sync', '❌ Critical error processing item response: ' + e.getMessage(), 'processItemResponse', 'IntacctItemSyncQueueable' );
         }
 
         if (!errorMessages.isEmpty()) {

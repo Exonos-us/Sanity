@@ -12,7 +12,7 @@ public class SalesforceProductSyncIntacctQueueable implements Queueable, Databas
             processNextProduct();
         } catch (Exception e) {
             System.debug('❌ Error in execute: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Error in SalesforceProductSyncIntacctQueueable: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Product Sync', '❌ Error in SalesforceProductSyncIntacctQueueable: ' + e.getMessage(), 'execute', 'SalesforceProductSyncIntacctQueueable');
         }
     }
 
@@ -48,7 +48,7 @@ public class SalesforceProductSyncIntacctQueueable implements Queueable, Databas
 
         } catch (Exception e) {
             System.debug('❌ Error processing product ' + productId + ': ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Error processing product ' + productId + ': ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Product Sync', '❌ Error processing product ' + productId + ': ' + e.getMessage(), 'processNextProduct', 'SalesforceProductSyncIntacctQueueable');
         }
 
         // ✅ Validate limits before enqueuing the next record
@@ -57,6 +57,7 @@ public class SalesforceProductSyncIntacctQueueable implements Queueable, Databas
                 System.enqueueJob(new SalesforceProductSyncIntacctQueueable(productIdsToProcess));
             } else {
                 System.debug('⚠️ Queueable job or callout limit reached. Next job not enqueued.');
+                IntacctSyncUtil.logSyncError('Product Sync', '⚠️ Queueable job or callout limit reached. Unable to enqueue next job.', 'processNextProduct', 'SalesforceProductSyncIntacctQueueable');
                 IntacctSyncUtil.sendErrorNotification('⚠️ Queueable job or callout limit reached. Unable to enqueue next job.');
             }
         }
@@ -80,12 +81,12 @@ public class SalesforceProductSyncIntacctQueueable implements Queueable, Databas
                 return parseResponse(res.getBody(), isInsert);
             } else {
                 System.debug('❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed: ' + res.getBody());
-                IntacctSyncUtil.sendErrorNotification('❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed for Product ' + prod.Name + ': ' + res.getBody());
+                IntacctSyncUtil.logSyncError('Product Sync', '❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed for Product ' + prod.Name + ': ' + res.getBody(), 'syncProductInIntacct', 'SalesforceProductSyncIntacctQueueable');
             }
 
         } catch (Exception e) {
             System.debug('❌ Callout error: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Callout error: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Product Sync', '❌ Callout error for Product ' + prod.Name + ': ' + e.getMessage(), 'syncProductInIntacct', 'SalesforceProductSyncIntacctQueueable');
         }
 
         return null;
@@ -112,7 +113,7 @@ public class SalesforceProductSyncIntacctQueueable implements Queueable, Databas
 
         } catch (Exception e) {
             System.debug('❌ XML Parsing error: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ XML Parsing error: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Product Sync', '❌ XML Parsing error: ' + e.getMessage(), 'parseResponse', 'SalesforceProductSyncIntacctQueueable');
         }
 
         return null;
