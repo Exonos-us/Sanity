@@ -28,13 +28,13 @@ public class IntacctInvoiceItemSyncQueueable implements Queueable, Database.Allo
             // Retrieve credentials and session
             Map<String, String> credentials = IntacctSyncUtil.getIntacctCredentials();
             if (credentials == null) {
-                IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct API credentials.');
+                IntacctSyncUtil.logSyncError('Invoice Entry Sync', '❌ Failed to retrieve Intacct API credentials.', 'execute', 'IntacctInvoiceItemSyncQueueable');
                 return;
             }
 
             String sessionId = IntacctSyncUtil.getSessionId();
             if (sessionId == null) {
-                IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct session token.');
+                IntacctSyncUtil.logSyncError('Invoice Entry Sync', '❌ Failed to retrieve Intacct session token.', 'execute', 'IntacctInvoiceItemSyncQueueable');
                 return;
             }
 
@@ -46,13 +46,13 @@ public class IntacctInvoiceItemSyncQueueable implements Queueable, Database.Allo
             System.debug('🔹 Intacct Invoice Item Query Response Body: ' + res.getBody());
 
             if (res.getStatusCode() != 200) {
-                IntacctSyncUtil.sendErrorNotification('❌ Intacct Invoice Item Query failed. HTTP Code: ' + res.getStatusCode());
+                IntacctSyncUtil.logSyncError('Invoice Entry Sync', '❌ Intacct Invoice Item Query failed. HTTP Code: ' + res.getStatusCode(), 'execute', 'IntacctInvoiceItemSyncQueueable');
                 return;
             }
 
             processInvoiceItemResponse(res.getBody());
         } catch (Exception e) {
-            IntacctSyncUtil.sendErrorNotification('❌ Error in IntacctInvoiceItemSyncQueueable: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Invoice Entry Sync', '❌ Error in IntacctInvoiceItemSyncQueueable: ' + e.getMessage(), 'execute', 'IntacctInvoiceItemSyncQueueable');
         }
     }
 
@@ -151,7 +151,7 @@ public class IntacctInvoiceItemSyncQueueable implements Queueable, Database.Allo
 
                                 entries.add(entry);
                             } catch (Exception e) {
-                                errorMessages.add('❌ Error processing invoice item: ' + e.getMessage());
+                                IntacctSyncUtil.logSyncError('Invoice Entry Sync', '❌ Error processing invoice item: ' + e.getMessage(), 'processInvoiceItemResponse', 'IntacctInvoiceItemSyncQueueable');
                             }
                         }
                     }
@@ -201,7 +201,7 @@ public class IntacctInvoiceItemSyncQueueable implements Queueable, Database.Allo
                 for (Integer i = 0; i < results.size(); i++) {
                     if (!results[i].isSuccess()) {
                         for (Database.Error err : results[i].getErrors()) {
-                            errorMessages.add('❌ Upsert error on record [' + entries[i].Name + ']: ' + err.getMessage());
+                            IntacctSyncUtil.logSyncError('Invoice Entry Sync', '❌ Upsert error on record [' + entries[i].Name + ']: ' + err.getMessage(), 'processInvoiceItemResponse', 'IntacctInvoiceItemSyncQueueable');
                         }
                     } else {
                         System.debug('✅ Upserted: ' + entries[i].Name);
@@ -213,7 +213,7 @@ public class IntacctInvoiceItemSyncQueueable implements Queueable, Database.Allo
                 errorMessages.add('⚠️ No valid entries to upsert.');
             }
         } catch (Exception e) {
-            errorMessages.add('❌ Error processing Invoice Entries: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Invoice Entry Sync', '❌ Error processing Invoice Entries: ' + e.getMessage(), 'processInvoiceItemResponse', 'IntacctInvoiceItemSyncQueueable');
         }
 
         if (!errorMessages.isEmpty()) {

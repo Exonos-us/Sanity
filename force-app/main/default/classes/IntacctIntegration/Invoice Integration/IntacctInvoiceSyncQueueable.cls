@@ -26,14 +26,14 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
         Map<String, String> credentials = IntacctSyncUtil.getIntacctCredentials();
 
         if (credentials == null) {
-            IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct API credentials.');
+            IntacctSyncUtil.logSyncError('Invoice Sync', '❌ Failed to retrieve Intacct API credentials.', 'requestInvoices', 'IntacctInvoiceSyncQueueable');
             return;
         }
 
         try {
             this.sessionId = IntacctSyncUtil.getSessionId();
             if (this.sessionId == null) {
-                IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct session token.');
+                IntacctSyncUtil.logSyncError('Invoice Sync', '❌ Failed to retrieve Intacct session token.', 'requestInvoices', 'IntacctInvoiceSyncQueueable');
                 return;
             }
 
@@ -52,14 +52,14 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
             System.debug('🔹 Intacct Invoice Query Response Body: ' + res.getBody());
 
             if (res.getStatusCode() != 200) {
-                IntacctSyncUtil.sendErrorNotification('❌ Intacct Invoice Query failed. HTTP Code: ' + res.getStatusCode());
+                IntacctSyncUtil.logSyncError('Invoice Sync', '❌ Intacct Invoice Query failed. HTTP Code: ' + res.getStatusCode(), 'requestInvoices', 'IntacctInvoiceSyncQueueable');
                 return;
             }
 
             processInvoiceResponse(res.getBody());
 
         } catch (Exception e) {
-            IntacctSyncUtil.sendErrorNotification('❌ Error in IntacctInvoiceSyncQueueable: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Invoice Sync', '❌ Error in IntacctInvoiceSyncQueueable: ' + e.getMessage(), 'requestInvoices', 'IntacctInvoiceSyncQueueable');
         }
     }
 
@@ -119,7 +119,7 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
             Dom.XmlNode resultNode = root.getChildElement('operation', null)
                                          ?.getChildElement('result', null);
             if (resultNode == null) {
-                errorMessages.add('❌ No result node found in response.');
+                IntacctSyncUtil.logSyncError('Invoice Sync', '❌ No result node found in response.', 'processInvoiceResponse', 'IntacctInvoiceSyncQueueable');
                 return;
             }
     
@@ -166,13 +166,13 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
                         if (relatedAccount != null) {
                             invoice.Customer__c = relatedAccount.Id;
                         } else {
-                            errorMessages.add('⚠️ No matching Account found for CustomerID: ' + customerId);
+                            IntacctSyncUtil.logSyncError('Invoice Sync', '⚠️ No matching Account found for CustomerID: ' + customerId, 'processInvoiceResponse', 'IntacctInvoiceSyncQueueable');
                         }
                     }
     
                     invoicesToUpsert.add(invoice);
                 } catch (Exception e) {
-                    errorMessages.add('❌ Error processing invoice record: ' + e.getMessage());
+                    IntacctSyncUtil.logSyncError('Invoice Sync', '❌ Error processing invoice record: ' + e.getMessage(), 'processInvoiceResponse', 'IntacctInvoiceSyncQueueable');
                 }
             }
     
@@ -185,7 +185,7 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
                         System.debug('✅ Upserted invoice: ' + invoicesToUpsert[i].Name);
                     } else {
                         for (Database.Error err : results[i].getErrors()) {
-                            errorMessages.add('❌ Upsert error on Invoice [' + invoicesToUpsert[i].Name + ']: ' + err.getMessage());
+                            IntacctSyncUtil.logSyncError('Invoice Sync', '❌ Upsert error on Invoice [' + invoicesToUpsert[i].Name + ']: ' + err.getMessage(), 'processInvoiceResponse', 'IntacctInvoiceSyncQueueable');
                         }
                     }
                 }
@@ -195,14 +195,15 @@ public class IntacctInvoiceSyncQueueable implements Queueable, Database.AllowsCa
             Integer numRemaining = Integer.valueOf(dataNode.getAttributeValue('numremaining', null));
             if (numRemaining > 0) {
                 if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
-                    //System.enqueueJob(new IntacctInvoiceSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
+                    System.enqueueJob(new IntacctInvoiceSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
                 } else {
+                    IntacctSyncUtil.logSyncError('Invoice Sync', '⚠️ Limits reached - Unable to enqueue next invoice job.', 'processInvoiceResponse', 'IntacctInvoiceSyncQueueable');
                     IntacctSyncUtil.sendErrorNotification('⚠️ Limits reached - Unable to enqueue next invoice job.');
                 }
             }
     
         } catch (Exception e) {
-            errorMessages.add('❌ Critical error processing invoice response: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Invoice Sync', '❌ Critical error processing invoice response: ' + e.getMessage(), 'processInvoiceResponse', 'IntacctInvoiceSyncQueueable');
         }
     
         if (!errorMessages.isEmpty()) {

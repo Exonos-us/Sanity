@@ -18,7 +18,7 @@ public with sharing class IntacctInvoiceItemSyncBatch implements Database.Batcha
         if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
             System.enqueueJob(new IntacctInvoiceItemSyncQueueable(records));
         } else {
-            System.debug('⚠️ Limits reached. Cannot enqueue additional jobs.');
+            IntacctSyncUtil.logSyncError('Invoice Item Sync', '⚠️ Limits reached. Cannot enqueue additional jobs in batch.', 'execute', 'IntacctInvoiceItemSyncBatch');
         }
     }
     
