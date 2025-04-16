@@ -1,6 +1,6 @@
 public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsCallouts {
 
-    private static final Integer PAGE_SIZE = 10;
+    private static final Integer PAGE_SIZE = 100;
 
     private Integer offset;
     private String lastModifiedDate;
@@ -24,14 +24,14 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
         Map<String, String> credentials = IntacctSyncUtil.getIntacctCredentials();
 
         if (credentials == null) {
-            IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct API credentials.');
+            IntacctSyncUtil.logSyncError('Customer Sync', '❌ Failed to retrieve Intacct API credentials.', 'requestCustomers', 'IntacctCustomerSyncQueueable');
             return;
         }
 
         try {
             String sessionId = IntacctSyncUtil.getSessionId();
             if (sessionId == null) {
-                IntacctSyncUtil.sendErrorNotification('❌ Failed to retrieve Intacct session token.');
+                IntacctSyncUtil.logSyncError('Customer Sync', '❌ Failed to retrieve Intacct session token.', 'requestCustomers', 'IntacctCustomerSyncQueueable');
                 return;
             }
 
@@ -50,14 +50,16 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
             System.debug('🔹 Intacct Customer Query Response Body: ' + res.getBody());
 
             if (res.getStatusCode() != 200) {
-                IntacctSyncUtil.sendErrorNotification('❌ Intacct Customer Query failed. HTTP Code: ' + res.getStatusCode());
+                String msg = '❌ Intacct Customer Query failed. HTTP Code: ' + res.getStatusCode() + '. Body: ' + res.getBody();
+                IntacctSyncUtil.logSyncError('Customer Sync', msg, 'requestCustomers', 'IntacctCustomerSyncQueueable');
                 return;
             }
 
             processCustomerResponse(res.getBody());
 
         } catch (Exception e) {
-            IntacctSyncUtil.sendErrorNotification('❌ Error in IntacctCustomerSyncQueueable: ' + e.getMessage());
+            String msg = '❌ Error in IntacctCustomerSyncQueueable: ' + e.getMessage() + '\n' + e.getStackTraceString();
+            IntacctSyncUtil.logSyncError('Customer Sync', msg, 'requestCustomers', 'IntacctCustomerSyncQueueable');        
         }
     }
 
@@ -156,7 +158,10 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
 
                     accountsToUpsert.add(acc);
                 } catch (Exception e) {
-                    errorMessages.add('❌ Error processing customer record: ' + e.getMessage() + ' StackTrace: ' + e.getStackTraceString());
+                    String msg = '❌ Error processing customer record: ' + e.getMessage() + '\n' + e.getStackTraceString();
+                    errorMessages.add(msg);
+                    IntacctSyncUtil.logSyncError('Customer Sync', msg, 'processCustomerResponse', 'IntacctCustomerSyncQueueable');
+                                               
                 }
             }
 
@@ -169,7 +174,9 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
                         System.debug('✅ Successfully processed: ' + accountsToUpsert[i].Name + ' ' + accountsToUpsert[i].Intacct_Customer_ID__c);
                     } else {
                         for (Database.Error err : results[i].getErrors()) {
-                            errorMessages.add('❌ Upsert error on record [' + accountsToUpsert[i].Name + ']: ' + err.getMessage());
+                            String msg = '❌ Upsert error on record [' + accountsToUpsert[i].Name + ']: ' + err.getMessage();
+                            errorMessages.add(msg);
+                            IntacctSyncUtil.logSyncError('Customer Sync', msg, 'processCustomerResponse', 'IntacctCustomerSyncQueueable');
                         }
                     }
                 }
@@ -185,9 +192,10 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
             if (numRemaining > 0) {
                 if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs() && Limits.getCallouts() < Limits.getLimitCallouts()) {
                     if (!Test.isRunningTest()) {
-                       // System.enqueueJob(new IntacctCustomerSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
+                       System.enqueueJob(new IntacctCustomerSyncQueueable(offset + PAGE_SIZE, lastModifiedDate));
                     }
                 } else {
+                    IntacctSyncUtil.logSyncError( 'Customer Sync', '⚠️ Limits reached - Unable to enqueue next job. Queueable jobs: ' + Limits.getQueueableJobs() + '/' + Limits.getLimitQueueableJobs() + ', Callouts: ' + Limits.getCallouts() + '/' + Limits.getLimitCallouts() + '. Remaining records: ' + numRemaining, 'processCustomerResponse', 'IntacctCustomerSyncQueueable' );
                     IntacctSyncUtil.sendErrorNotification(
                         '⚠️ Limits reached - Unable to enqueue next job. ' +
                         'Queueable jobs: ' + Limits.getQueueableJobs() + ' / ' + Limits.getLimitQueueableJobs() +
@@ -200,7 +208,9 @@ public class IntacctCustomerSyncQueueable implements Queueable, Database.AllowsC
             }
 
         } catch (Exception e) {
-            errorMessages.add('❌ Critical error processing customer response: ' + e.getMessage());
+            String msg = '❌ Error processing customer response: ' + e.getMessage() + '\n' + e.getStackTraceString();
+            errorMessages.add(msg);
+            IntacctSyncUtil.logSyncError('Customer Sync', msg, 'processCustomerResponse', 'IntacctCustomerSyncQueueable');
         }
 
         if (!errorMessages.isEmpty()) {

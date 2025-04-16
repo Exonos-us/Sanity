@@ -11,8 +11,8 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
         try {
             processNextAccount();
         } catch (Exception e) {
-            System.debug('❌ Error in execute: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Error in SalesforceAccountsSyncIntacctQueueable: ' + e.getMessage());
+            String msg = '❌ Error in SalesforceAccountsSyncIntacctQueueable: ' + e.getMessage();
+            IntacctSyncUtil.logSyncError('Account Sync', msg, 'execute', 'SalesforceAccountsSyncIntacctQueueable');            
         }
     }
 
@@ -43,8 +43,11 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
             }
 
         } catch (Exception e) {
-            System.debug('❌ Error processing account ' + accountId + ': ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Error processing account ' + accountId + ': ' + e.getMessage());
+            String msg = '❌ Error processing account ' + accountId + ': ' + e.getMessage();
+            IntacctSyncUtil.logSyncError('Account Sync', msg, 'processNextAccount', 'SalesforceAccountsSyncIntacctQueueable');   
+            Account accError = new Account(Id = accountId);
+            accError.Intacct_Sync_Error__c = e.getMessage();
+            update accError;        
         }
 
         // ✅ Validate limits before enqueuing the next record
@@ -75,12 +78,12 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
             if (res.getStatusCode() == 200) {
                 return parseResponse(res.getBody(), isInsert);
             } else {
-                System.debug('❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed: ' + res.getBody());
-                IntacctSyncUtil.sendErrorNotification('❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed for Account ' + acc.Name + ': ' + res.getBody());
+                String msg = '❌ ' + (isInsert ? 'Insert' : 'Update') + ' failed for Account ' + acc.Name + ': ' + res.getBody();
+                IntacctSyncUtil.logSyncError('Account Sync', msg, 'syncCustomerInIntacct', 'SalesforceAccountsSyncIntacctQueueable');                
             }
         } catch (Exception e) {
-            System.debug('❌ Callout error: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Callout error: ' + e.getMessage());
+            String msg = '❌ Callout error for Account ' + acc.Name + ': ' + e.getMessage();
+            IntacctSyncUtil.logSyncError('Account Sync', msg, 'syncCustomerInIntacct', 'SalesforceAccountsSyncIntacctQueueable');
         }
 
         return null;
@@ -105,8 +108,8 @@ public class SalesforceAccountsSyncIntacctQueueable implements Queueable, Databa
                 }
             }
         } catch (Exception e) {
-            System.debug('❌ XML Parsing error: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ XML Parsing error: ' + e.getMessage());
+            String msg = '❌ XML Parsing error: ' + e.getMessage();
+            IntacctSyncUtil.logSyncError('Account Sync', msg, 'parseResponse', 'SalesforceAccountsSyncIntacctQueueable');            
         }
 
         return null;

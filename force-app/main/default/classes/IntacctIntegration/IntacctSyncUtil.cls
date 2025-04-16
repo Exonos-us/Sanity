@@ -154,10 +154,12 @@ public class IntacctSyncUtil {
     }
     
 
-    public static void logSyncError(String module, String message) {
+    public static void logSyncError(String module, String message,String method, String className) {
         try {
             Intacct_Error_Log__c errorLog = new Intacct_Error_Log__c();
-            errorLog.Module__c = module;    
+            errorLog.Module__c = module;   
+            errorLog.Method_Name__c =  method ;
+            errorLog.ClassName__c = className;
             if (!String.isBlank(message)) {
                 errorLog.Message__c = message.length() > 32000 ? message.substring(0, 32000) : message;
             }
