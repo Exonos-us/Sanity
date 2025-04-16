@@ -13,7 +13,7 @@ public class SalesforceOrderSyncIntacctQueueable implements Queueable, Database.
             processNextOrder();
         } catch (Exception e) {
             System.debug('❌ Error in execute: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Error in SalesforceOrderSyncIntacctQueueable: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Order Sync', '❌ Error in SalesforceOrderSyncIntacctQueueable: ' + e.getMessage(), 'execute', 'SalesforceOrderSyncIntacctQueueable');
         }
     }
     
@@ -58,9 +58,7 @@ public class SalesforceOrderSyncIntacctQueueable implements Queueable, Database.
             
         } catch (Exception e) {
             System.debug('❌ Error processing Order ' + orderId + ': ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Error processing Order ' + orderId + ': ' + e.getMessage());
-            
-            updateOrderWithError(orderId, e.getMessage());
+            IntacctSyncUtil.logSyncError('Order Sync', '❌ Error processing Order ' + orderId + ': ' + e.getMessage(), 'processNextOrder', 'SalesforceOrderSyncIntacctQueueable');
         }
         
         if (!orderIdsToProcess.isEmpty()) {
@@ -68,6 +66,7 @@ public class SalesforceOrderSyncIntacctQueueable implements Queueable, Database.
                 System.enqueueJob(new SalesforceOrderSyncIntacctQueueable(orderIdsToProcess));
             } else {
                 System.debug('⚠️ Limits reached. Not enqueuing next job.');
+                IntacctSyncUtil.logSyncError('Order Sync', '⚠️ Limits reached. Not enqueuing next job.', 'processNextOrder', 'SalesforceOrderSyncIntacctQueueable');
                 IntacctSyncUtil.sendErrorNotification('⚠️ Limits reached. Not enqueuing next job.');
             }
         }
@@ -95,17 +94,15 @@ public class SalesforceOrderSyncIntacctQueueable implements Queueable, Database.
                 
                 if (intacctSalesOrderId != null) {
                     return intacctSalesOrderId;
-                } else {
-                    updateOrderWithError(ord.Id, res.getBody());
-                }
+                } 
             } else {
+                IntacctSyncUtil.logSyncError('Order Sync', '❌ Intacct response code not 200 for Order ' + ord.Id + ': ' + res.getBody(), 'syncOrderInIntacct', 'SalesforceOrderSyncIntacctQueueable');
                 updateOrderWithError(ord.Id, res.getBody());
             }
             
         } catch (Exception e) {
             System.debug('❌ Callout exception: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ Callout exception for Order ' + ord.Id + ': ' + e.getMessage());
-            updateOrderWithError(ord.Id, e.getMessage());
+            IntacctSyncUtil.logSyncError('Order Sync', '❌ Callout exception for Order ' + ord.Id + ': ' + e.getMessage(), 'syncOrderInIntacct', 'SalesforceOrderSyncIntacctQueueable');
         }
         
         return null;
@@ -296,7 +293,7 @@ public class SalesforceOrderSyncIntacctQueueable implements Queueable, Database.
             
         } catch (Exception e) {
             System.debug('❌ XML Parsing error: ' + e.getMessage());
-            IntacctSyncUtil.sendErrorNotification('❌ XML Parsing error: ' + e.getMessage());
+            IntacctSyncUtil.logSyncError('Order Sync', '❌ XML Parsing error: ' + e.getMessage(), 'parseResponse', 'SalesforceOrderSyncIntacctQueueable');
         }
         
         return null;
